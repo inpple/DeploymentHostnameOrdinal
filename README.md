@@ -1,5 +1,7 @@
 #先创建
+
 kubectl create -f apply pod.yaml 
+
 #然后部署
 # 默认使用goproxy.cn
 export GOPROXY=https://goproxy.cn
