@@ -5,6 +5,7 @@ kubectl create -f apply pod.yaml
 export GOPROXY=https://goproxy.cn
 # input your command here
 #go mod init example.com/m/v2
+
 go mod tidy 
 
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0  go build -v -o main .
