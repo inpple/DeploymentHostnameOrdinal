@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${project}
+  labels:
+    app: ${project}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: ${project}
+  template:
+    metadata:
+      labels:
+        app: ${project}
+    spec:
+      containers:
+      - name: ${project}
+        command:
+          - ./main
+        image: ${ORIGIN_REPO}
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sh","-c","sleep 5"]
+        ports:
+        - containerPort: 8443
+        readinessProbe:
+          tcpSocket:
+            port: 8443
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 8443
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 100m
+            memory: 112Mi
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+        securityContext:
+            runAsUser: 65530
+            runAsGroup: 65530
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+      securityContext: 
+        fsGroup: 65530
+        fsGroupChangePolicy: "OnRootMismatch"
