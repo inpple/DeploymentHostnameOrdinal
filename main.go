@@ -95,7 +95,7 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
 func main() {
     http.HandleFunc("/mutate", handleMutate)
     fmt.Println("Starting webhook server...")
-    if err := http.ListenAndServeTLS(":8443", "./tls.crt", "./tls.key", nil); err != nil {
+    if err := http.ListenAndServeTLS(":8443", "/app/tls.crt", "/app/tls.key", nil); err != nil {
         fmt.Printf("Failed to start server: %v", err)
     }
 }
