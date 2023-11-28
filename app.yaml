@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${project}
+  name: hostname
   labels:
-    app: ${project}
+    app: hostname
 spec:
   replicas: 1
   revisionHistoryLimit: 2
   selector:
     matchLabels:
-      app: ${project}
+      app: hostname
   template:
     metadata:
       labels:
-        app: ${project}
+        app: hostname
     spec:
       containers:
-      - name: ${project}
+      - name: hostname
         command:
           - ./main
         image: ${ORIGIN_REPO}
