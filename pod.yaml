@@ -20,4 +20,4 @@ webhooks:
     admissionReviewVersions: ["v1", "v1beta1"]
     namespaceSelector:
       matchLabels:
-        app: oss-rpc3
+        app: go-zero
