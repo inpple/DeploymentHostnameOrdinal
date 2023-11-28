@@ -4,5 +4,3 @@ RUN addgroup -S nonroot && adduser -u 65530 -S nonroot -G nonroot
 USER 65530
 WORKDIR /app
 ADD main main
-COPY tls.crt tls.crt
-COPY tls.key tls.key
