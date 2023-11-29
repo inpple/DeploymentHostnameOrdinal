@@ -50,6 +50,7 @@ func (tracker *PodHostnameTracker) GetNextHostname(namespace, deploymentName str
         if parts := strings.Split(pod.Name, "-"); len(parts) > 1 {
             if num, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
                 usedNumbers[num] = true
+                fmt.Printf("Pod %s is using number %d\n", pod.Name, num)
             }
         }
     }
