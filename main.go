@@ -6,15 +6,16 @@ import (
     "fmt"
     "net/http"
     "strconv"
-    "strings"
     "sync"
 
     "k8s.io/api/admission/v1beta1"
-    v1 "k8s.io/api/core/v1"
+    "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
+
+const hostnameLabel = "myapp.com/hostname"
 
 // PodHostnameTracker 跟踪每个 Deployment 的 Pod 序号
 type PodHostnameTracker struct {
@@ -47,8 +48,8 @@ func (tracker *PodHostnameTracker) GetNextHostname(namespace, deploymentName str
 
     usedNumbers := make(map[int]bool)
     for _, pod := range pods.Items {
-        if parts := strings.Split(pod.Name, "-"); len(parts) > 1 {
-            if num, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
+        if hostnameValue, ok := pod.Labels[hostnameLabel]; ok {
+            if num, err := strconv.Atoi(hostnameValue); err == nil {
                 usedNumbers[num] = true
             }
         }
@@ -56,7 +57,7 @@ func (tracker *PodHostnameTracker) GetNextHostname(namespace, deploymentName str
 
     for i := 1; i <= 50; i++ {
         if !usedNumbers[i] {
-            return fmt.Sprintf("%s-%d", deploymentName, i), nil
+            return strconv.Itoa(i), nil
         }
     }
 
@@ -79,17 +80,17 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
     }
 
     deploymentName := pod.GetLabels()["app"] // 假设 'app' 标签包含了 Deployment 名称
-    hostname, err := hostnameTracker.GetNextHostname(pod.Namespace, deploymentName)
+    hostnameNumber, err := hostnameTracker.GetNextHostname(pod.Namespace, deploymentName)
     if err != nil {
         http.Error(w, fmt.Sprintf("error getting next hostname: %v", err), http.StatusInternalServerError)
         return
     }
 
-    patch := []map[string]string{
+    patch := []map[string]interface{}{
         {
             "op":    "add",
-            "path":  "/spec/hostname",
-            "value": hostname,
+            "path":  "/metadata/labels/" + strings.Replace(hostnameLabel, "/", "~1", -1),
+            "value": hostnameNumber,
         },
     }
     patchBytes, err := json.Marshal(patch)
@@ -117,13 +118,13 @@ func main() {
     var err error
     hostnameTracker, err = NewPodHostnameTracker()
     if err != nil {
-        fmt.Printf("Failed to initialize hostname tracker: %v", err)
+        fmt.Printf("Failed to initialize hostname tracker: %v\n", err)
         return
     }
 
     http.HandleFunc("/mutate", handleMutate)
     fmt.Println("Starting webhook server...")
     if err := http.ListenAndServeTLS(":8443", "/app/tls/tls.crt", "/app/tls/tls.key", nil); err != nil {
-        fmt.Printf("Failed to start server: %v", err)
+        fmt.Printf("Failed to start server: %v\n", err)
     }
 }
