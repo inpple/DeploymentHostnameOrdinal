@@ -9,15 +9,16 @@ import (
     "sync"
 
     "k8s.io/api/admission/v1beta1"
-    v1 "k8s.io/api/core/v1"
+    "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
 
 type PodHostnameTracker struct {
-    clientset *kubernetes.Clientset
-    lock      sync.Mutex
+    clientset   *kubernetes.Clientset
+    usedNumbers map[string][]bool
+    lock        sync.Mutex
 }
 
 func NewPodHostnameTracker() (*PodHostnameTracker, error) {
@@ -29,32 +30,24 @@ func NewPodHostnameTracker() (*PodHostnameTracker, error) {
     if err != nil {
         return nil, err
     }
-    return &PodHostnameTracker{clientset: clientset}, nil
+    return &PodHostnameTracker{
+        clientset:   clientset,
+        usedNumbers: make(map[string][]bool),
+    }, nil
 }
 
 func (tracker *PodHostnameTracker) GetNextHostname(namespace, deploymentName string) (string, error) {
     tracker.lock.Lock()
     defer tracker.lock.Unlock()
 
-    pods, err := tracker.clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
-        LabelSelector: "app=" + deploymentName,
-    })
-    if err != nil {
-        return "", err
+    if _, ok := tracker.usedNumbers[deploymentName]; !ok {
+        tracker.usedNumbers[deploymentName] = make([]bool, 50)
     }
 
-    usedNumbers := make(map[int]bool)
-    for _, pod := range pods.Items {
-        if hostname := pod.Labels["hostname"]; hostname != "" {
-            if number, err := strconv.Atoi(hostname); err == nil {
-                usedNumbers[number] = true
-            }
-        }
-    }
-
-    for i := 1; i <= 50; i++ {
-        if !usedNumbers[i] {
-            return fmt.Sprintf("%s-%d", deploymentName, i), nil
+    for i := 0; i < 50; i++ {
+        if !tracker.usedNumbers[deploymentName][i] {
+            tracker.usedNumbers[deploymentName][i] = true
+            return fmt.Sprintf("%s-%d", deploymentName, i+1), nil
         }
     }
 
@@ -83,7 +76,7 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    patch := []map[string]interface{}{
+    patch := []map[string]string{
         {
             "op":    "add",
             "path":  "/metadata/labels/hostname",
@@ -121,7 +114,7 @@ func main() {
 
     http.HandleFunc("/mutate", handleMutate)
     fmt.Println("Starting webhook server...")
-    if err := http.ListenAndServeTLS(":8443", "/app/tls/tls.crt", "/app/tls/tls.key", nil); err != nil {
+    if err := http.ListenAndServeTLS(":8443", "/path/to/tls.crt", "/path/to/tls.key", nil); err != nil {
         fmt.Printf("Failed to start server: %v\n", err)
     }
 }
