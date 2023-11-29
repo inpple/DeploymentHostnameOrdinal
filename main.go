@@ -6,16 +6,15 @@ import (
     "fmt"
     "net/http"
     "strconv"
+    "strings"
     "sync"
 
     "k8s.io/api/admission/v1beta1"
-    "k8s.io/api/core/v1"
+    v1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
-
-const hostnameLabel = "myapp.com/hostname"
 
 // PodHostnameTracker 跟踪每个 Deployment 的 Pod 序号
 type PodHostnameTracker struct {
@@ -48,16 +47,20 @@ func (tracker *PodHostnameTracker) GetNextHostname(namespace, deploymentName str
 
     usedNumbers := make(map[int]bool)
     for _, pod := range pods.Items {
-        if hostnameValue, ok := pod.Labels[hostnameLabel]; ok {
-            if num, err := strconv.Atoi(hostnameValue); err == nil {
-                usedNumbers[num] = true
+        hostname := pod.Labels["hostname"]
+        if hostname != "" {
+            parts := strings.Split(hostname, "-")
+            if len(parts) > 1 {
+                if num, err := strconv.Atoi(parts[1]); err == nil {
+                    usedNumbers[num] = true
+                }
             }
         }
     }
 
     for i := 1; i <= 50; i++ {
         if !usedNumbers[i] {
-            return strconv.Itoa(i), nil
+            return fmt.Sprintf("%s-%d", deploymentName, i), nil
         }
     }
 
@@ -79,8 +82,8 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    deploymentName := pod.GetLabels()["app"] // 假设 'app' 标签包含了 Deployment 名称
-    hostnameNumber, err := hostnameTracker.GetNextHostname(pod.Namespace, deploymentName)
+    deploymentName := pod.GetLabels()["app"]
+    hostname, err := hostnameTracker.GetNextHostname(pod.Namespace, deploymentName)
     if err != nil {
         http.Error(w, fmt.Sprintf("error getting next hostname: %v", err), http.StatusInternalServerError)
         return
@@ -89,8 +92,8 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
     patch := []map[string]interface{}{
         {
             "op":    "add",
-            "path":  "/metadata/labels/" + strings.Replace(hostnameLabel, "/", "~1", -1),
-            "value": hostnameNumber,
+            "path":  "/metadata/labels/hostname",
+            "value": hostname,
         },
     }
     patchBytes, err := json.Marshal(patch)
