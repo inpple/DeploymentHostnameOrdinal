@@ -1,21 +1,26 @@
 package main
 
 import (
+    "context"
     "encoding/json"
     "fmt"
     "net/http"
+    "strconv"
     "sync"
 
     "k8s.io/api/admission/v1beta1"
     "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
 
+const hostnameLabel = "myapp.com/hostname"
+
+// PodHostnameTracker 跟踪每个 Deployment 的 Pod 序号
 type PodHostnameTracker struct {
-    clientset   *kubernetes.Clientset
-    usedNumbers map[string][]bool
-    lock        sync.Mutex
+    clientset *kubernetes.Clientset
+    lock      sync.Mutex
 }
 
 func NewPodHostnameTracker() (*PodHostnameTracker, error) {
@@ -27,24 +32,32 @@ func NewPodHostnameTracker() (*PodHostnameTracker, error) {
     if err != nil {
         return nil, err
     }
-    return &PodHostnameTracker{
-        clientset:   clientset,
-        usedNumbers: make(map[string][]bool),
-    }, nil
+    return &PodHostnameTracker{clientset: clientset}, nil
 }
 
 func (tracker *PodHostnameTracker) GetNextHostname(namespace, deploymentName string) (string, error) {
     tracker.lock.Lock()
     defer tracker.lock.Unlock()
 
-    if _, ok := tracker.usedNumbers[deploymentName]; !ok {
-        tracker.usedNumbers[deploymentName] = make([]bool, 50)
+    pods, err := tracker.clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+        LabelSelector: "app=" + deploymentName,
+    })
+    if err != nil {
+        return "", err
     }
 
-    for i := 0; i < 50; i++ {
-        if !tracker.usedNumbers[deploymentName][i] {
-            tracker.usedNumbers[deploymentName][i] = true
-            return fmt.Sprintf("%s-%d", deploymentName, i+1), nil
+    usedNumbers := make(map[int]bool)
+    for _, pod := range pods.Items {
+        if hostnameValue, ok := pod.Labels[hostnameLabel]; ok {
+            if num, err := strconv.Atoi(hostnameValue); err == nil {
+                usedNumbers[num] = true
+            }
+        }
+    }
+
+    for i := 1; i <= 50; i++ {
+        if !usedNumbers[i] {
+            return strconv.Itoa(i), nil
         }
     }
 
@@ -66,18 +79,18 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    deploymentName := pod.GetLabels()["app"]
-    hostname, err := hostnameTracker.GetNextHostname(pod.Namespace, deploymentName)
+    deploymentName := pod.GetLabels()["app"] // 假设 'app' 标签包含了 Deployment 名称
+    hostnameNumber, err := hostnameTracker.GetNextHostname(pod.Namespace, deploymentName)
     if err != nil {
         http.Error(w, fmt.Sprintf("error getting next hostname: %v", err), http.StatusInternalServerError)
         return
     }
 
-    patch := []map[string]string{
+    patch := []map[string]interface{}{
         {
             "op":    "add",
-            "path":  "/metadata/labels/hostname",
-            "value": hostname,
+            "path":  "/metadata/labels/" + strings.Replace(hostnameLabel, "/", "~1", -1),
+            "value": hostnameNumber,
         },
     }
     patchBytes, err := json.Marshal(patch)
