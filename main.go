@@ -1,16 +1,13 @@
 package main
 
 import (
-    "context"
     "encoding/json"
     "fmt"
     "net/http"
-    "strconv"
     "sync"
 
     "k8s.io/api/admission/v1beta1"
     "k8s.io/api/core/v1"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
