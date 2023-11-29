@@ -1,8 +1,11 @@
-#先创建
+#创建yaml
 
-kubectl create -f apply pod.yaml 
+kubectl create -f apply  yaml/*
+ClusterRole将创建一个名为 pod-reader 的 ClusterRole，具有获取、观察和列出 Pods 的权限。
+ClusterRoleBinding把 pod-reader ClusterRole 绑定到 crd 命名空间中的 default 服务账户
+pod.yaml是MutatingWebhook
 
-#然后部署
+#部署
 # 默认使用goproxy.cn
 export GOPROXY=https://goproxy.cn
 # input your command here

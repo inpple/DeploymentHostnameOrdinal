@@ -1,53 +1,69 @@
 package main
 
 import (
+    "context"
     "encoding/json"
     "fmt"
     "net/http"
+    "strconv"
+    "strings"
     "sync"
+
     "k8s.io/api/admission/v1beta1"
-    "k8s.io/api/core/v1"
+    v1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/rest"
 )
 
 // PodHostnameTracker 跟踪每个 Deployment 的 Pod 序号
 type PodHostnameTracker struct {
-    usedNumbers map[string][]bool
-    lock        sync.Mutex
+    clientset *kubernetes.Clientset
+    lock      sync.Mutex
 }
 
-func NewPodHostnameTracker() *PodHostnameTracker {
-    return &PodHostnameTracker{
-        usedNumbers: make(map[string][]bool),
+func NewPodHostnameTracker() (*PodHostnameTracker, error) {
+    config, err := rest.InClusterConfig()
+    if err != nil {
+        return nil, err
     }
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return nil, err
+    }
+    return &PodHostnameTracker{clientset: clientset}, nil
 }
 
-func (tracker *PodHostnameTracker) GetNextHostname(deploymentName string) string {
+func (tracker *PodHostnameTracker) GetNextHostname(namespace, deploymentName string) (string, error) {
     tracker.lock.Lock()
     defer tracker.lock.Unlock()
 
-    used, ok := tracker.usedNumbers[deploymentName]
-    if !ok {
-        // 第一次为这个 Deployment 分配序号
-        used = make([]bool, 50) // 序号从 1 到 50
+    pods, err := tracker.clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+        LabelSelector: "app=" + deploymentName,
+    })
+    if err != nil {
+        return "", err
     }
 
-    // 查找未使用的最小序号
-    for i := 0; i < 50; i++ {
-        if !used[i] {
-            used[i] = true
-            tracker.usedNumbers[deploymentName] = used
-            return fmt.Sprintf("%s-%d", deploymentName, i+1)
+    usedNumbers := make(map[int]bool)
+    for _, pod := range pods.Items {
+        if parts := strings.Split(pod.Name, "-"); len(parts) > 1 {
+            if num, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
+                usedNumbers[num] = true
+            }
         }
     }
 
-    // 所有序号都已使用，重置并重新开始
-    used = make([]bool, 50)
-    used[0] = true
-    tracker.usedNumbers[deploymentName] = used
-    return fmt.Sprintf("%s-1", deploymentName)
+    for i := 1; i <= 50; i++ {
+        if !usedNumbers[i] {
+            return fmt.Sprintf("%s-%d", deploymentName, i), nil
+        }
+    }
+
+    return "", fmt.Errorf("no available hostname number found")
 }
 
-var hostnameTracker = NewPodHostnameTracker()
+var hostnameTracker *PodHostnameTracker
 
 func handleMutate(w http.ResponseWriter, r *http.Request) {
     var review v1beta1.AdmissionReview
@@ -63,7 +79,11 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
     }
 
     deploymentName := pod.GetLabels()["app"] // 假设 'app' 标签包含了 Deployment 名称
-    hostname := hostnameTracker.GetNextHostname(deploymentName)
+    hostname, err := hostnameTracker.GetNextHostname(pod.Namespace, deploymentName)
+    if err != nil {
+        http.Error(w, fmt.Sprintf("error getting next hostname: %v", err), http.StatusInternalServerError)
+        return
+    }
 
     patch := []map[string]string{
         {
@@ -92,7 +112,15 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
         http.Error(w, fmt.Sprintf("encode error: %v", err), http.StatusInternalServerError)
     }
 }
+
 func main() {
+    var err error
+    hostnameTracker, err = NewPodHostnameTracker()
+    if err != nil {
+        fmt.Printf("Failed to initialize hostname tracker: %v", err)
+        return
+    }
+
     http.HandleFunc("/mutate", handleMutate)
     fmt.Println("Starting webhook server...")
     if err := http.ListenAndServeTLS(":8443", "/app/tls.crt", "/app/tls.key", nil); err != nil {
