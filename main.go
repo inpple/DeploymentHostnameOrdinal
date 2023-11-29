@@ -5,6 +5,7 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
+    "sort"
     "strconv"
     "strings"
     "sync"
@@ -47,13 +48,9 @@ func (tracker *PodHostnameTracker) GetNextHostname(namespace, deploymentName str
 
     usedNumbers := make(map[int]bool)
     for _, pod := range pods.Items {
-        hostname := pod.Labels["hostname"]
-        if hostname != "" {
-            parts := strings.Split(hostname, "-")
-            if len(parts) > 1 {
-                if num, err := strconv.Atoi(parts[1]); err == nil {
-                    usedNumbers[num] = true
-                }
+        if parts := strings.Split(pod.Name, "-"); len(parts) > 1 {
+            if num, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
+                usedNumbers[num] = true
             }
         }
     }
@@ -82,17 +79,17 @@ func handleMutate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    deploymentName := pod.GetLabels()["app"]
+    deploymentName := pod.GetLabels()["app"] // 假设 'app' 标签包含了 Deployment 名称
     hostname, err := hostnameTracker.GetNextHostname(pod.Namespace, deploymentName)
     if err != nil {
         http.Error(w, fmt.Sprintf("error getting next hostname: %v", err), http.StatusInternalServerError)
         return
     }
 
-    patch := []map[string]interface{}{
+    patch := []map[string]string{
         {
             "op":    "add",
-            "path":  "/metadata/labels/hostname",
+            "path":  "/spec/hostname",
             "value": hostname,
         },
     }
@@ -121,13 +118,13 @@ func main() {
     var err error
     hostnameTracker, err = NewPodHostnameTracker()
     if err != nil {
-        fmt.Printf("Failed to initialize hostname tracker: %v\n", err)
+        fmt.Printf("Failed to initialize hostname tracker: %v", err)
         return
     }
 
     http.HandleFunc("/mutate", handleMutate)
     fmt.Println("Starting webhook server...")
-    if err := http.ListenAndServeTLS(":8443", "/app/tls/tls.crt", "/app/tls/tls.key", nil); err != nil {
-        fmt.Printf("Failed to start server: %v\n", err)
+    if err := http.ListenAndServeTLS(":8443", "/app/tls.crt", "/app/tls.key", nil); err != nil {
+        fmt.Printf("Failed to start server: %v", err)
     }
 }
