@@ -1,4 +1,4 @@
-适配go-zero的volume模式，目前支持最大50个，避免性能影响
+# 适配go-zero的volume模式，目前支持最大50个，避免性能影响
 
 Deployment的pod发生变动的时候将pod分配hostname字段 格式Deployment-序号
 主要通过pod.yaml去控制标签
@@ -11,10 +11,10 @@ ClusterRoleBinding把 pod-reader ClusterRole 绑定到 crd 命名空间中的 de
 pod.yaml是MutatingWebhook
 
 #部署
-# 默认使用goproxy.cn
-export GOPROXY=https://goproxy.cn
+#默认使用goproxy.cn
+#export GOPROXY=https://goproxy.cn
 # input your command here
-#go mod init example.com/m/v2
+//go mod init example.com/m/v2
 
 go mod tidy 
 
