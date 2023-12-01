@@ -1,5 +1,6 @@
 适配go-zero的volume模式
-Deployment的pod发生变动的时候将pod分配hostname字段  格式Deployment-序号
+
+Deployment的pod发生变动的时候将pod分配hostname字段 格式Deployment-序号
 主要通过pod.yaml去控制标签
 
 #创建yaml
