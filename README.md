@@ -1,3 +1,7 @@
+适配go-zero的volume模式
+Deployment的pod发生变动的时候将pod分配hostname字段  格式Deployment-序号
+主要通过pod.yaml去控制标签
+
 #创建yaml
 
 kubectl create -f apply  yaml/*
@@ -16,5 +20,4 @@ go mod tidy
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0  go build -v -o main .
 
 
-Deployment更换hostname  格式Deployment-序号
-主要通过pod.yaml去控制标签
+
