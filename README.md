@@ -22,5 +22,6 @@ go mod tidy
 
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0  go build -v -o main .
 
+效果图
 
-
+![image](https://github.com/inpple/DeploymentHostnameOrdinal/assets/39829594/3fcb369c-72cb-46db-9327-5ac1a42800a3)
